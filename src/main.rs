@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use chrono::prelude::*;
-use comrak::{arena_tree::Node, nodes::NodeValue, Arena, Options};
+use comrak::{nodes::NodeValue, Arena, Options};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -11,9 +11,10 @@ use tokio::{
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-struct DeezerARL {
-    value: String,
-    expiry: String,
+pub struct ARL {
+    pub region: String,
+    pub value: String,
+    pub expiry: String,
 }
 
 #[tokio::main]
@@ -24,13 +25,13 @@ async fn main() -> Result<()> {
     let file_path = dir.data_dir().join("arls.json");
     let arl_file = File::open(&file_path).await;
 
-    let mut arl: Option<DeezerARL> = None;
+    let mut arl: Option<ARL> = None;
 
     if arl_file.is_ok() {
         let mut content = String::new();
         arl_file?.read_to_string(&mut content).await?;
 
-        let arls: Vec<DeezerARL> = serde_json::from_str(&content)?;
+        let arls: Vec<ARL> = serde_json::from_str(&content)?;
         let filtered: Vec<_> = arls
             .into_iter()
             .filter(|p| time_is_valid(&p.expiry))
@@ -57,7 +58,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn get_new_arls() -> Result<Vec<DeezerARL>> {
+async fn get_new_arls() -> Result<Vec<ARL>> {
     let document = reqwest::get("https://rentry.co/firehawk52/raw")
         .await?
         .text()
@@ -66,36 +67,75 @@ async fn get_new_arls() -> Result<Vec<DeezerARL>> {
     let arena = Arena::new();
     let root = comrak::parse_document(&arena, &document, &Options::default());
 
+    let current_date = Utc::now().date_naive();
+
     let mut arls = vec![];
-    let mut previous: &Node<_> = root;
+
+    let mut region: Option<String> = None;
+    let mut expiry: Option<NaiveDate> = None;
 
     for node in root.descendants() {
-        if let NodeValue::Code(ref code) = node.data.borrow().value {
-            let text_valid = code.literal.chars().all(char::is_alphanumeric);
-            let len_valid = code.literal.len() >= 128;
+        match node.data.borrow().value {
+            // Flags are images for some reason, and not emojis
+            NodeValue::Image(_) => {
+                let alt_text = node.first_child().unwrap().data.borrow();
 
-            if text_valid && len_valid {
-                if let NodeValue::Text(ref text) = previous.data.borrow().value {
-                    let split: Vec<_> = text.trim_end().rsplit(" ").collect();
-                    let time = split.iter().skip(1).next().unwrap();
-
-                    if time_is_valid(time) {
-                        arls.push(DeezerARL {
-                            value: code.literal.clone(),
-                            expiry: time.to_string(),
-                        })
-                    }
+                if let NodeValue::Text(ref txt) = alt_text.value {
+                    // For country names like Brazil/Brasil
+                    let english_name = txt.split('/').next().unwrap();
+                    region = Some(english_name.to_string())
                 }
             }
-        }
+            NodeValue::Text(ref txt) => {
+                // All the relevant table rows are centered using <- ->
+                if !txt.starts_with('<') {
+                    continue;
+                }
 
-        previous = node;
+                let dates: Vec<_> = txt
+                    .trim_end()
+                    .split(" ")
+                    .filter_map(|p| NaiveDate::parse_from_str(p, "%Y-%m-%d").ok())
+                    .collect();
+
+                if dates.is_empty() {
+                    continue;
+                }
+
+                let exp = dates.first().unwrap().clone();
+                if current_date > exp {
+                    continue;
+                }
+
+                expiry = Some(exp);
+            }
+            NodeValue::Code(ref c) => {
+                // deezer ARLs roughly fit this description, longer than qobuz tokens
+                if c.literal.chars().any(|c| !char::is_alphanumeric(c)) || c.literal.len() < 128 {
+                    continue;
+                }
+
+                if region.is_none() || expiry.is_none() {
+                    continue;
+                }
+
+                arls.push(ARL {
+                    region: region.unwrap(),
+                    value: c.literal.clone(),
+                    expiry: expiry.unwrap().to_string(),
+                });
+
+                region = None;
+                expiry = None;
+            }
+            _ => (),
+        }
     }
 
     return Ok(arls);
 }
 
-async fn save_arls(arls: &[DeezerARL], file_path: &PathBuf) -> Result<()> {
+async fn save_arls(arls: &[ARL], file_path: &PathBuf) -> Result<()> {
     let json = serde_json::to_string_pretty(arls)?;
 
     let mut out = OpenOptions::new()
