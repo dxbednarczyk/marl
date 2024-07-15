@@ -25,22 +25,21 @@ fn main() -> Result<()> {
     data.cache()?;
 
     let arl = if args.region.is_some() {
-        let found = data
-            .arls
-            .iter()
-            .find(|p| &p.region == args.region.as_ref().unwrap());
+        let region = args.region.unwrap();
+
+        let found = data.arls.iter().find(|p| p.region == region);
 
         if found.is_none() {
             return Err(anyhow!(
                 "could not find valid ARL for {}\nValid regions: {}",
-                args.region.unwrap(),
+                region,
                 data.regions().join(", ")
             ));
         }
 
-        found.unwrap().value.clone()
+        &found.unwrap().value
     } else {
-        data.arls.first().unwrap().value.clone()
+        &data.arls.first().unwrap().value
     };
 
     println!("{arl}");
