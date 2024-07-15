@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{bail, Result};
 use arl::Data;
 use clap::Parser;
 
@@ -30,11 +30,11 @@ fn main() -> Result<()> {
         let found = data.arls.iter().find(|p| p.region == region);
 
         if found.is_none() {
-            return Err(anyhow!(
+            bail!(
                 "could not find valid ARL for {}\nValid regions: {}",
                 region,
                 data.regions().join(", ")
-            ));
+            );
         }
 
         &found.unwrap().value

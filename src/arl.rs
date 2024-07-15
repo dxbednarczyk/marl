@@ -3,8 +3,8 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Result;
-use chrono::prelude::*;
+use anyhow::{bail, Result};
+use chrono::{prelude::*, Duration};
 use comrak::{nodes::NodeValue, Arena, Options};
 use directories::ProjectDirs;
 use itertools::Itertools;
@@ -14,12 +14,13 @@ const REMOTE_URL: &str = "https://rentry.co/firehawk52/raw";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Data {
+    pub expiry: DateTime<Utc>,
     pub arls: Vec<ARL>,
 
     #[serde(skip)]
     cache_path: PathBuf,
     #[serde(skip)]
-    today: NaiveDate,
+    now: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -32,11 +33,13 @@ pub struct ARL {
 impl Default for Data {
     fn default() -> Self {
         let dir = ProjectDirs::from("xyz", "bednarczyk", "marl").unwrap();
+        let now = Utc::now();
 
         Self {
+            expiry: now + Duration::days(1),
             arls: Vec::new(),
             cache_path: dir.data_dir().join("arls.json"),
-            today: Utc::now().date_naive(),
+            now,
         }
     }
 }
@@ -46,6 +49,11 @@ impl Data {
         let arl_file = File::open(&self.cache_path)?;
 
         let data: Self = serde_json::from_reader(&arl_file)?;
+
+        if data.expiry < data.now {
+            bail!("cache expired");
+        }
+
         self.arls = data.arls;
 
         Ok(())
@@ -89,7 +97,7 @@ impl Data {
                     }
 
                     let exp = dates.first().unwrap().clone();
-                    if self.today > exp {
+                    if self.now.date_naive() > exp {
                         continue;
                     }
 
@@ -117,6 +125,8 @@ impl Data {
             }
         }
 
+        self.expiry = self.now + Duration::days(1);
+
         Ok(())
     }
 
@@ -134,7 +144,7 @@ impl Data {
     pub fn filter_cache(&mut self) {
         self.arls.retain(|p| {
             let date = NaiveDate::parse_from_str(&p.expiry, "%Y-%m-%d").unwrap();
-            date >= self.today
+            date >= self.now.date_naive()
         });
     }
 
