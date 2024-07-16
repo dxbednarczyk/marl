@@ -15,14 +15,7 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let mut data = Data::default();
-
-    if data.load_cache().is_err() {
-        data.load_remote()?;
-    }
-
-    data.filter_cache();
-    data.cache()?;
+    let data = Data::load()?;
 
     let arl = if args.region.is_some() {
         let region = args.region.unwrap();
@@ -43,6 +36,8 @@ fn main() -> Result<()> {
     };
 
     println!("{arl}");
+
+    data.cache()?;
 
     Ok(())
 }

@@ -1,66 +1,94 @@
 use std::{
-    fs::{File, OpenOptions},
+    fs::{self, OpenOptions},
     path::PathBuf,
 };
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use chrono::{prelude::*, Duration};
 use comrak::{nodes::NodeValue, Arena, Options};
+use config::Config;
 use directories::ProjectDirs;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 const REMOTE_URL: &str = "https://rentry.co/firehawk52/raw";
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Data {
     pub expiry: DateTime<Utc>,
+    pub sha256: String,
     pub arls: Vec<ARL>,
 
     #[serde(skip)]
-    cache_path: PathBuf,
-    #[serde(skip)]
-    now: DateTime<Utc>,
+    path: PathBuf,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct ARL {
     pub region: String,
     pub value: String,
-    pub expiry: String,
-}
-
-impl Default for Data {
-    fn default() -> Self {
-        let dir = ProjectDirs::from("xyz", "bednarczyk", "marl").unwrap();
-        let now = Utc::now();
-
-        Self {
-            expiry: now + Duration::days(1),
-            arls: Vec::new(),
-            cache_path: dir.data_dir().join("arls.json"),
-            now,
-        }
-    }
+    pub expiry: NaiveDate,
 }
 
 impl Data {
-    pub fn load_cache(&mut self) -> Result<()> {
-        let arl_file = File::open(&self.cache_path)?;
+    pub fn load() -> Result<Self> {
+        let cache_path = ProjectDirs::from("xyz", "bednarczyk", "marl").unwrap();
+        let file_path = cache_path.cache_dir().join("marl.json");
 
-        let data: Self = serde_json::from_reader(&arl_file)?;
+        let cfg = Config::builder()
+            .add_source(config::File::from(file_path.clone()))
+            .build();
 
-        if data.expiry < data.now {
-            bail!("cache expired");
+        let mut data: Data = if cfg.is_err() {
+            Data::default()
+        } else {
+            cfg.unwrap().try_deserialize()?
+        };
+
+        data.path = file_path;
+
+        let now = Utc::now();
+        if data.expiry < now {
+            data.load_remote(now)?;
+            data.expiry = now + Duration::days(1);
+            data.arls.retain(|p| p.expiry > now.date_naive());
         }
 
-        self.arls = data.arls;
+        Ok(data)
+    }
+
+    pub fn cache(&self) -> Result<()> {
+        fs::create_dir_all(self.path.parent().unwrap())?;
+
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&self.path)?;
+
+        serde_json::to_writer(file, self)?;
 
         Ok(())
     }
 
-    pub fn load_remote(&mut self) -> Result<()> {
+    pub fn regions(&self) -> Vec<String> {
+        self.arls
+            .iter()
+            .map(|p| p.region.clone())
+            .unique()
+            .collect_vec()
+    }
+
+    fn load_remote(&mut self, now: DateTime<Utc>) -> Result<()> {
         let document = ureq::get(REMOTE_URL).call()?.into_string()?;
+
+        let sum = format!("{:x}", Sha256::digest(&document));
+        if sum == self.sha256 {
+            return Ok(());
+        }
+
+        self.sha256 = sum;
 
         let arena = Arena::new();
         let root = comrak::parse_document(&arena, &document, &Options::default());
@@ -97,7 +125,7 @@ impl Data {
                     }
 
                     let exp = dates.first().unwrap().clone();
-                    if self.now.date_naive() > exp {
+                    if now.date_naive() > exp {
                         continue;
                     }
 
@@ -115,7 +143,7 @@ impl Data {
                     self.arls.push(ARL {
                         region: region.unwrap(),
                         value: c.literal.clone(),
-                        expiry: expiry.unwrap().to_string(),
+                        expiry: expiry.unwrap(),
                     });
 
                     region = None;
@@ -125,34 +153,6 @@ impl Data {
             }
         }
 
-        self.expiry = self.now + Duration::days(1);
-
         Ok(())
-    }
-
-    pub fn cache(&mut self) -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(&self.cache_path)?;
-
-        serde_json::to_writer(&mut file, self)?;
-
-        Ok(())
-    }
-
-    pub fn filter_cache(&mut self) {
-        self.arls.retain(|p| {
-            let date = NaiveDate::parse_from_str(&p.expiry, "%Y-%m-%d").unwrap();
-            date >= self.now.date_naive()
-        });
-    }
-
-    pub fn regions(&self) -> Vec<String> {
-        self.arls
-            .iter()
-            .map(|p| p.region.clone())
-            .unique()
-            .collect_vec()
     }
 }
