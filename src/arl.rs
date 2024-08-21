@@ -96,7 +96,12 @@ impl Data {
         let mut region: Option<String> = None;
         let mut expiry: Option<NaiveDate> = None;
 
+        let mut braille_counter = 0;
         for node in root.descendants() {
+            if braille_counter > 3 {
+                break;
+            }
+
             match node.data.borrow().value {
                 // Flags are images for some reason, and not emojis
                 NodeValue::Image(_) => {
@@ -109,30 +114,30 @@ impl Data {
                     }
                 }
                 NodeValue::Text(ref txt) => {
-                    // All the relevant table rows are centered using <- ->
-                    if !txt.starts_with('<') {
-                        continue;
+                    // Start of token tables (Deezer and Qobuz) as of 8/20/24
+                    // begin with 3 U+2800: BRAILLE PATTERN BLANK
+                    // If we hit the second table, activate killswitch
+                    if txt.contains('\u{2800}') {
+                        braille_counter += 1;
                     }
 
-                    let dates: Vec<_> = txt
-                        .trim_end()
-                        .split(" ")
+                    let date: Vec<_> = txt
+                        .split_whitespace()
                         .filter_map(|p| NaiveDate::parse_from_str(p, "%Y-%m-%d").ok())
                         .collect();
 
-                    if dates.is_empty() {
+                    if date.is_empty() {
                         continue;
                     }
 
-                    let exp = dates.first().unwrap().clone();
-                    if now.date_naive() > exp {
-                        continue;
+                    if let Some(d) = date.first() {
+                        if &now.date_naive() < d {
+                            expiry = Some(d.clone());
+                        }
                     }
-
-                    expiry = Some(exp);
                 }
                 NodeValue::Code(ref c) => {
-                    if c.literal.chars().any(|c| !char::is_alphanumeric(c)) {
+                    if !c.literal.chars().all(char::is_alphanumeric) {
                         continue;
                     }
 
