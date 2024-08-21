@@ -1,12 +1,11 @@
 use std::{
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     path::PathBuf,
 };
 
 use anyhow::Result;
 use chrono::{prelude::*, Duration};
 use comrak::{nodes::NodeValue, Arena, Options};
-use config::Config;
 use directories::ProjectDirs;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -36,14 +35,9 @@ impl Data {
         let cache_path = ProjectDirs::from("xyz", "bednarczyk", "marl").unwrap();
         let file_path = cache_path.cache_dir().join("marl.json");
 
-        let cfg = Config::builder()
-            .add_source(config::File::from(file_path.clone()))
-            .build();
-
-        let mut data: Data = if cfg.is_err() {
-            Data::default()
-        } else {
-            cfg.unwrap().try_deserialize()?
+        let mut data: Data = match File::open(&file_path) {
+            Ok(f) => serde_json::from_reader(f)?,
+            Err(_) => Data::default(),
         };
 
         data.path = file_path;
@@ -97,6 +91,7 @@ impl Data {
         let mut expiry: Option<NaiveDate> = None;
 
         let mut braille_counter = 0;
+
         for node in root.descendants() {
             if braille_counter > 3 {
                 break;
