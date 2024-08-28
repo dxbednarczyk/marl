@@ -114,6 +114,7 @@ impl Data {
                     // If we hit the second table, activate killswitch
                     if txt.contains('\u{2800}') {
                         braille_counter += 1;
+                        continue;
                     }
 
                     let date: Vec<_> = txt
