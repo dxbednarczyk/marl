@@ -128,7 +128,7 @@ impl Data {
 
                     if let Some(d) = date.first() {
                         if &now.date_naive() < d {
-                            expiry = Some(d.clone());
+                            expiry = Some(*d);
                         }
                     }
                 }
@@ -155,5 +155,17 @@ impl Data {
         }
 
         Ok(())
+    }
+
+    pub fn invalidate(&mut self, region: Option<String>) {
+        let mut idx = 0;
+        if let Some(r) = region {
+            let exists = self.arls.iter().position(|p| p.region == r);
+            if let Some(i) = exists {
+                idx = i;
+            }
+        }
+
+        self.arls.remove(idx);
     }
 }

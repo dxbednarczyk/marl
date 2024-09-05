@@ -27,17 +27,7 @@ fn main() -> Result<()> {
 
     if let Some(c) = args.cmd {
         match c {
-            Commands::Invalidate { region } => {
-                let mut idx = 0;
-                if let Some(r) = region {
-                    let exists = data.arls.iter().position(|p| p.region == r);
-                    if let Some(i) = exists {
-                        idx = i;
-                    }
-                }
-
-                data.arls.remove(idx);
-            }
+            Commands::Invalidate { region } => data.invalidate(region),
         }
 
         data.cache()?;
@@ -50,11 +40,9 @@ fn main() -> Result<()> {
         let found = data.arls.iter().find(|p| p.region == region);
 
         if found.is_none() {
-            bail!(
-                "could not find valid ARL for {}\nValid regions: {}",
-                region,
-                data.regions().join(", ")
-            );
+            let region_list = data.regions().join(", ");
+
+            bail!("no ARL present for {region}\nValid regions: {region_list}");
         }
 
         &found.unwrap().value
