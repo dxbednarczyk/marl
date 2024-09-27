@@ -17,4 +17,4 @@ $ marl -r Brazil
 - [x] Cache ARLs to disk
 - [x] Select ARL by region
 - [x] Invalidate last used ARL (per region) if not working
-- [ ] Options to update config files for ripper programs
+- [ ] Options to update config files for ripper programs (in progress)
