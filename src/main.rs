@@ -1,13 +1,14 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use arl::Data;
 use clap::{Parser, Subcommand};
 
 mod arl;
+mod config;
 
 /// Deezer ARL manager
 #[derive(Parser, Debug)]
 #[command(author = "Damian Bednarczyk <damian@bednarczyk.xyz>")]
-#[command(version = "0.1.0")]
+#[command(version = "0.1.1")]
 struct Args {
     #[command(subcommand)]
     cmd: Option<Commands>,
@@ -17,8 +18,11 @@ struct Args {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    /// Edit the configuration file for certain downloaders
+    #[command(subcommand)]
+    Config(config::Config),
     /// Invalidates the current ARL in the stack (optionally, for a specific region)
-    Invalidate { region: Option<String> },
+    Invalidate,
 }
 
 fn main() -> Result<()> {
@@ -27,7 +31,8 @@ fn main() -> Result<()> {
 
     if let Some(c) = args.cmd {
         match c {
-            Commands::Invalidate { region } => data.invalidate(region),
+            Commands::Invalidate => data.invalidate(args.region),
+            Commands::Config(c) => c.update(&data, &args.region)?,
         }
 
         data.cache()?;
@@ -35,17 +40,7 @@ fn main() -> Result<()> {
     }
 
     let arl = if args.region.is_some() {
-        let region = args.region.unwrap();
-
-        let found = data.arls.iter().find(|p| p.region == region);
-
-        if found.is_none() {
-            let region_list = data.regions().join(", ");
-
-            bail!("no ARL present for {region}\nValid regions: {region_list}");
-        }
-
-        &found.unwrap().value
+        &data.get_region(args.region.unwrap())?
     } else {
         &data.arls.first().unwrap().value
     };

@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{prelude::*, Duration};
 use comrak::{nodes::NodeValue, Arena, Options};
 use directories::ProjectDirs;
@@ -167,5 +167,17 @@ impl Data {
         }
 
         self.arls.remove(idx);
+    }
+
+    pub fn get_region(&self, region: String) -> Result<String> {
+        let found = self.arls.iter().find(|p| p.region == region);
+
+        if found.is_none() {
+            let region_list = self.regions().join(", ");
+
+            bail!("no ARL present for {region}\nValid regions: {region_list}");
+        }
+
+        Ok(found.unwrap().value.clone())
     }
 }
