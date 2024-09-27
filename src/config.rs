@@ -1,6 +1,6 @@
 use std::{
-    fs::{File, OpenOptions},
-    io::{Read, Write},
+    fs::{self, OpenOptions},
+    io::Write,
     path::PathBuf,
 };
 
@@ -15,7 +15,6 @@ use crate::arl::Data;
 pub enum Config {
     Streamrip {
         /// Override the config path if necessary
-        #[clap(alias = "slug")]
         path: Option<String>,
     },
 }
@@ -53,24 +52,16 @@ fn get_path(over: &Option<String>, project: String) -> Result<PathBuf> {
 fn streamrip(data: &Data, path: &Option<String>, region: &Option<String>) -> Result<()> {
     let config_path = get_path(path, String::from("streamrip"))?.join("config.toml");
 
-    let mut cfg = File::open(&config_path)?;
-
-    let mut content = String::new();
-    cfg.read_to_string(&mut content)?;
-
+    let content = fs::read_to_string(&config_path)?;
     let mut document = content.parse::<DocumentMut>()?;
-
-    let arl = if region.is_some() {
-        &data.get_region(region.clone().unwrap())?
-    } else {
-        &data.arls.first().unwrap().value
-    };
 
     if !document.contains_table("deezer") {
         bail!("config file does not contain deezer table");
     }
 
     let deezer = document["deezer"].as_table_mut().unwrap();
+
+    let arl = data.get(region)?;
     deezer["arl"] = value(arl);
 
     let mut cfg = OpenOptions::new()

@@ -17,14 +17,14 @@ const REMOTE_URL: &str = "https://rentry.co/firehawk52/raw";
 pub struct Data {
     pub expiry: DateTime<Utc>,
     pub sha256: String,
-    pub arls: Vec<ARL>,
+    pub arls: Vec<Arl>,
 
     #[serde(skip)]
     path: PathBuf,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct ARL {
+pub struct Arl {
     pub region: String,
     pub value: String,
     pub expiry: NaiveDate,
@@ -105,7 +105,7 @@ impl Data {
                     if let NodeValue::Text(ref txt) = alt_text.value {
                         // For country names like Brazil/Brasil
                         let english_name = txt.split('/').next().unwrap();
-                        region = Some(english_name.to_string())
+                        region = Some(english_name.to_string());
                     }
                 }
                 NodeValue::Text(ref txt) => {
@@ -141,7 +141,7 @@ impl Data {
                         continue;
                     }
 
-                    self.arls.push(ARL {
+                    self.arls.push(Arl {
                         region: region.unwrap(),
                         value: c.literal.clone(),
                         expiry: expiry.unwrap(),
@@ -169,15 +169,25 @@ impl Data {
         self.arls.remove(idx);
     }
 
-    pub fn get_region(&self, region: String) -> Result<String> {
-        let found = self.arls.iter().find(|p| p.region == region);
+    pub fn get(&self, region: &Option<String>) -> Result<String> {
+        let arl = if region.is_some() {
+            let region = region.clone().unwrap();
+            let found = self.arls.iter().find(|p| p.region == region);
 
-        if found.is_none() {
-            let region_list = self.regions().join(", ");
+            if found.is_none() {
+                let region_list = self.regions().join(", ");
 
-            bail!("no ARL present for {region}\nValid regions: {region_list}");
-        }
+                bail!(
+                    "no ARL present for {}\nValid regions: {region_list}",
+                    region
+                );
+            }
 
-        Ok(found.unwrap().value.clone())
+            found.unwrap().value.clone()
+        } else {
+            self.arls.first().unwrap().value.clone()
+        };
+
+        Ok(arl)
     }
 }

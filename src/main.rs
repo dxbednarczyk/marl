@@ -39,11 +39,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let arl = if args.region.is_some() {
-        &data.get_region(args.region.unwrap())?
-    } else {
-        &data.arls.first().unwrap().value
-    };
+    let arl = data.get(&args.region)?;
 
     println!("{arl}");
 
