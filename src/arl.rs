@@ -183,11 +183,11 @@ impl Data {
                 );
             }
 
-            found.unwrap().value.clone()
+            found
         } else {
-            self.arls.first().unwrap().value.clone()
+            self.arls.first()
         };
 
-        Ok(arl)
+        Ok(arl.unwrap().value.clone())
     }
 }
