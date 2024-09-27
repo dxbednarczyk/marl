@@ -11,6 +11,10 @@ $ marl
 # You can also get ARLs from a specific region
 $ marl -r Brazil
 4b4ees0[...]
+
+# marl can also edit your config files for you, if the ARL doesn't work anymore
+$ marl invalidate
+$ marl config streamrip
 ```
 
 ## To-do
